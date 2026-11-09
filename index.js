@@ -1,27 +1,37 @@
 const express = require("express");
-const multer = require("multer");
 const sharp = require("sharp");
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
 
-app.post("/gif", upload.single("image"), async (req, res) => {
+app.use(express.json());
+
+app.post("/gif", async (req, res) => {
   try {
-    if (!req.file) {
+    const { image, text } = req.body;
+
+    if (!image) {
       return res.status(400).json({
-        error: "No image was uploaded."
+        error: "No image URL was provided."
       });
     }
 
-    if (!req.body.text) {
+    if (!text) {
       return res.status(400).json({
         error: "No text was provided."
       });
     }
 
-    const text = req.body.text;
+    const response = await fetch(image);
 
-    const output = await sharp(req.file.buffer)
+    if (!response.ok) {
+      return res.status(400).json({
+        error: "Could not download the image."
+      });
+    }
+
+    const imageBuffer = Buffer.from(await response.arrayBuffer());
+
+    const output = await sharp(imageBuffer)
       .composite([
         {
           input: Buffer.from(`
