@@ -3,13 +3,14 @@ const sharp = require("sharp");
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "100mb" }));
 
 app.post("/gif", async (req, res) => {
   try {
-    const { image, text } = req.body;
+    const imageUrl = req.body.image;
+    const text = req.body.text;
 
-    if (!image) {
+    if (!imageUrl) {
       return res.status(400).json({
         error: "No image URL was provided."
       });
@@ -21,7 +22,8 @@ app.post("/gif", async (req, res) => {
       });
     }
 
-    const response = await fetch(image);
+    // Download the Discord attachment
+    const response = await fetch(imageUrl);
 
     if (!response.ok) {
       return res.status(400).json({
@@ -31,50 +33,25 @@ app.post("/gif", async (req, res) => {
 
     const imageBuffer = Buffer.from(await response.arrayBuffer());
 
-    const output = await sharp(imageBuffer)
-      .composite([
-        {
-          input: Buffer.from(`
-            <svg width="1000" height="200">
-              <style>
-                .text {
-                  fill: white;
-                  font-size: 70px;
-                  font-weight: bold;
-                  font-family: Arial;
-                  text-anchor: middle;
-                }
-              </style>
-              <text x="500" y="120" class="text">${text}</text>
-            </svg>
-          `),
-          gravity: "south"
-        }
-      ])
-      .png()
-      .toBuffer();
+    // Get image dimensions
+    const metadata = await sharp(imageBuffer).metadata();
 
-    res.set("Content-Type", "image/png");
-    res.send(output);
+    const width = metadata.width || 1000;
+    const height = metadata.height || 1000;
 
-  } catch (error) {
-    console.error(error);
+    // Escape text so special characters don't break the SVG
+    const safeText = String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
-    res.status(500).json({
-      error: "Failed to add text to the image."
-    });
-  }
-});
-
-app.get("/", (req, res) => {
-  res.json({
-    status: "online",
-    message: "GIF API is working!"
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+    // Create the text overlay
+    const overlay = Buffer.from(`
+      <svg width="${width}" height="${height}">
+        <style>
+          .text {
+            fill: white;
+            font-family: Arial, sans-serif;
+            font-size: ${Math.max(30, Math.floor(width / 12))}px;
+            font-weight: bold;
